@@ -26,7 +26,6 @@ const heartbeat = new HEARTBEAT(
   parseInt(process.env.TOP_N || '5', 10),
   process.env.DRY_RUN === 'true'
 );
-
 let hub: ReturnType<typeof attachWebSocketHub> | null = null;
 
 const app = createApp({
