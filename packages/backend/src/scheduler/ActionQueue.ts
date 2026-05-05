@@ -1,51 +1,16 @@
-import { ClassifiedEvent, SOULProfile, ActionItem } from "../../../shared/types";
+import { ActionItem } from "../../../shared/types";
 
 /**
- * Scoring Engine - Priority Queue Management
- */
-export class ScoringEngine {
-  /**
-   * Score an event
-   * Formula: urgency × relationship × log2(hours + 1)
-   */
-  score(event: ClassifiedEvent, profile: SOULProfile): number {
-    const urgencyWeights: Record<string, number> = {
-      commitment_made: 1.5,
-      unanswered_query: 1.2,
-      relationship_drift: 0.8,
-      neutral: 0.3,
-    };
-
-    const urgency = urgencyWeights[event.type] || 0.3;
-    const relationship = profile.relationship_weight;
-
-    const elapsedHours = this.calculateElapsedHours(profile.last_contact);
-
-    const safeHours = Math.max(1, elapsedHours);
-
-    return urgency * relationship * Math.log2(safeHours + 1);
-  }
-
-private calculateElapsedHours(lastContact: Date | string): number {
-  const now = new Date();
-
-  // 🔥 convert if it's string
-  const contactDate =
-    typeof lastContact === "string"
-      ? new Date(lastContact)
-      : lastContact;
-
-  return (now.getTime() - contactDate.getTime()) / (1000 * 60 * 60);
-}  
-}
-
-/**
- * Action Queue with deduplication
+ * ActionQueue - Priority Queue with Deduplication
  */
 export class ActionQueue {
   private queue: ActionItem[] = [];
   private deduplicationMap: Map<string, ActionItem> = new Map();
 
+  /**
+   * Insert action with deduplication
+   * Prevents same contact + same type within 2 hours
+   */
   insert(action: ActionItem): void {
     const key = this.getDeduplicationKey(action);
     const existing = this.deduplicationMap.get(key);
@@ -74,18 +39,28 @@ export class ActionQueue {
   }
 
   /**
-   * Remove action
+   * Remove action by ID
    */
   remove(actionId: string): void {
     const index = this.queue.findIndex((a) => a.id === actionId);
 
     if (index !== -1) {
       const removed = this.queue[index];
+
+      // remove from queue
       this.queue.splice(index, 1);
 
+      // remove from dedup map
       const key = this.getDeduplicationKey(removed);
       this.deduplicationMap.delete(key);
     }
+  }
+
+  /**
+   * Get full queue (for debugging/demo)
+   */
+  getAll(): ActionItem[] {
+    return this.queue;
   }
 
   /**
@@ -95,10 +70,16 @@ export class ActionQueue {
     return this.queue.length;
   }
 
+  /**
+   * Generate deduplication key
+   */
   private getDeduplicationKey(action: ActionItem): string {
     return `${action.contact_id}_${action.action_type}`;
   }
 
+  /**
+   * Check if within 2-hour window
+   */
   private isWithin2Hours(date1: Date, date2: Date): boolean {
     const twoHours = 2 * 60 * 60 * 1000;
     return Math.abs(date1.getTime() - date2.getTime()) < twoHours;
