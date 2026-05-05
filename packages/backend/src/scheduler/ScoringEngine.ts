@@ -1,4 +1,4 @@
-import { ClassifiedEvent, SOULProfile, ActionItem } from "../../../shared/types";
+import { ClassifiedEvent, SOULProfile } from "../../../shared/types";
 
 /**
  * Scoring Engine - Priority Queue Management
@@ -23,7 +23,17 @@ export class ScoringEngine {
 
     const safeHours = Math.max(1, elapsedHours);
 
-    return urgency * relationship * Math.log2(safeHours + 1);
+    let score = urgency * relationship * Math.log2(safeHours + 1);
+
+if (profile.open_commitments.length > 0) {
+  score += 0.3;
+}
+
+if (profile.health_score < 40) {
+  score += 0.5;
+}
+
+return score;
   }
 
 private calculateElapsedHours(lastContact: Date | string): number {
@@ -37,70 +47,4 @@ private calculateElapsedHours(lastContact: Date | string): number {
 
   return (now.getTime() - contactDate.getTime()) / (1000 * 60 * 60);
 }  
-}
-
-/**
- * Action Queue with deduplication
- */
-export class ActionQueue {
-  private queue: ActionItem[] = [];
-  private deduplicationMap: Map<string, ActionItem> = new Map();
-
-  insert(action: ActionItem): void {
-    const key = this.getDeduplicationKey(action);
-    const existing = this.deduplicationMap.get(key);
-
-    if (
-      existing &&
-      this.isWithin2Hours(existing.created_at, action.created_at)
-    ) {
-      console.log(`[ActionQueue] Duplicate skipped: ${key}`);
-      return;
-    }
-
-    this.queue.push(action);
-
-    // sort highest score first
-    this.queue.sort((a, b) => b.score - a.score);
-
-    this.deduplicationMap.set(key, action);
-  }
-
-  /**
-   * Get top N actions
-   */
-  peekTop(n: number): ActionItem[] {
-    return this.queue.slice(0, n);
-  }
-
-  /**
-   * Remove action
-   */
-  remove(actionId: string): void {
-    const index = this.queue.findIndex((a) => a.id === actionId);
-
-    if (index !== -1) {
-      const removed = this.queue[index];
-      this.queue.splice(index, 1);
-
-      const key = this.getDeduplicationKey(removed);
-      this.deduplicationMap.delete(key);
-    }
-  }
-
-  /**
-   * Queue size
-   */
-  size(): number {
-    return this.queue.length;
-  }
-
-  private getDeduplicationKey(action: ActionItem): string {
-    return `${action.contact_id}_${action.action_type}`;
-  }
-
-  private isWithin2Hours(date1: Date, date2: Date): boolean {
-    const twoHours = 2 * 60 * 60 * 1000;
-    return Math.abs(date1.getTime() - date2.getTime()) < twoHours;
-  }
 }
