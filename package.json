@@ -1,0 +1,28 @@
+{
+  "name": "silent-social-debt-manager",
+  "version": "1.0.0",
+  "description": "Autonomous AI agent for forgotten follow-ups, unanswered messages, and broken relationship commitments",
+  "private": true,
+  "workspaces": [
+    "packages/backend",
+    "packages/frontend",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "yarn workspaces foreach run dev",
+    "build": "yarn workspaces foreach run build",
+    "test": "yarn workspaces foreach run test",
+    "lint": "yarn workspaces foreach run lint",
+    "type-check": "yarn workspaces foreach run type-check"
+  },
+  "keywords": [
+    "openClaw",
+    "hackathon",
+    "PRISM",
+    "AI",
+    "NLP",
+    "scheduler"
+  ],
+  "author": "PRISM Hackathon Team",
+  "license": "MIT"
+}
