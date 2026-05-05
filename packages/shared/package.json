@@ -6,7 +6,8 @@
   "types": "dist/types.d.ts",
   "scripts": {
     "build": "tsc",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "npm run type-check"
   },
   "keywords": [
     "types",

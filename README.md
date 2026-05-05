@@ -25,18 +25,17 @@ SilentSocialDebtManager/
 │   │   ├── src/
 │   │   │   ├── gateway/      # Message ingestion (OpenClaw Gateway)
 │   │   │   ├── nlp/          # Classification, extraction, tone, draft generation
-│   │   │   ├── memory/       # SOUL.md store (persistent contact profiles)
+│   │   │   ├── memory/       # SOUL storage (MemoryContactStore in dev + SoulStore stub)
 │   │   │   ├── scheduler/    # HEARTBEAT daemon + scoring engine
 │   │   │   ├── api/          # REST API + WebSocket server
-│   │   │   ├── shared/       # TypeScript interfaces
 │   │   │   └── config/       # Environment & configuration
 │   │   └── tests/            # Unit, integration, E2E tests
 │   ├── frontend/             # React + Vite + TailwindCSS dashboard
 │   │   ├── src/
 │   │   │   ├── components/   # Debt queue, profiles, action log, modals
-│   │   │   ├── hooks/        # Custom hooks (WebSocket, queue state)
-│   │   │   ├── pages/        # Dashboard page
-│   │   │   └── types/        # Frontend TypeScript types
+│   │   │   ├── hooks/        # useQueue, useContacts, useQueueWebSocket
+│   │   │   ├── pages/        # Dashboard, contacts, layouts
+│   │   │   ├── routes.tsx    # Router config
 │   │   └── index.html
 │   └── shared/               # Shared types & interfaces (for both backend & frontend)
 └── docs/                     # Architecture, API contracts, SOUL schema
@@ -55,41 +54,39 @@ SilentSocialDebtManager/
 
 ### Setup
 
-1. **Clone & install dependencies:**
+1. **Clone & install**
    ```bash
    git clone <repo-url>
    cd SilentSocialDebtManager
-   yarn install
+   npm install
    ```
 
-2. **Configure environment variables:**
+2. **Environment**
    ```bash
    cp packages/backend/.env.example packages/backend/.env
-   # Edit packages/backend/.env with your API keys
+   # Add API keys as needed for channel adapters / LLM (optional for dashboard-only dev)
    ```
 
-3. **Build all packages:**
+3. **Run**
    ```bash
-   yarn build
+   # Terminal 1
+   cd packages/backend && npm run dev
+
+   # Terminal 2  
+   cd packages/frontend && npm run dev
    ```
 
-4. **Start backend & frontend (dev mode):**
+4. **Tests**
    ```bash
-   yarn dev
+   npm test
    ```
+   Runs backend Jest E2E suite plus type-check in `frontend` and `shared`.
 
-   Or separately:
-   ```bash
-   # Terminal 1: Backend
-   cd packages/backend && yarn dev
-   
-   # Terminal 2: Frontend
-   cd packages/frontend && yarn dev
-   ```
+5. **Visit dashboard**
+   - API: `http://localhost:3000` (`GET /health`, `GET /api/queue`)
+   - UI: `http://localhost:5173` (Vite proxies `/api` and `/ws`)
 
-5. **Visit dashboard:**
-   - Backend API: `http://localhost:3000`
-   - Frontend Dashboard: `http://localhost:5173`
+**Optional (Yarn 1):** Install with `yarn install`, then run `yarn dev` in each package (`packages/backend`, `packages/frontend`). Root `yarn dev` expects Yarn Berry (`workspaces foreach`), so prefer npm workspaces at the repo root for simplicity.
 
 ## 📋 Key Features
 

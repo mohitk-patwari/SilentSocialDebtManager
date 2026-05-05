@@ -1,5 +1,12 @@
 # Demo Script — Silent Social Debt Manager
 
+## URLs (dev)
+
+- Dashboard: `http://localhost:5173/` (Debt queue + action log)
+- Contacts: `http://localhost:5173/contacts`
+- Backend + WebSocket: `http://localhost:3000`, `ws://localhost:3000/ws`
+- Note: until LLM/HEARTBEAT populates `draft_ready`, seed a draft via API/tests or wire the generation step for live demo.
+
 ## Goal
 
 Demonstrate end-to-end flow from message ingestion to automated draft approval.

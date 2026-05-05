@@ -4,7 +4,7 @@
  */
 
 import { IChannelAdapter } from '../../gateway';
-import { MessageEvent } from '../../../../shared/types';
+import { MessageEvent } from '../../../../../shared/types';
 
 export class WhatsAppAdapter implements IChannelAdapter {
   private phoneNumberId: string;

@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "yarn workspaces foreach run dev",
     "build": "yarn workspaces foreach run build",
-    "test": "yarn workspaces foreach run test",
+    "test": "npm run test --workspaces --if-present",
     "lint": "yarn workspaces foreach run lint",
     "type-check": "yarn workspaces foreach run type-check"
   },
@@ -24,5 +24,9 @@
     "scheduler"
   ],
   "author": "PRISM Hackathon Team",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "autoprefixer": "^10.5.0",
+    "postcss": "^8.5.14"
+  }
 }
