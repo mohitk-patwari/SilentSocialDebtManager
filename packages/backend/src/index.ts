@@ -7,10 +7,11 @@ import 'dotenv/config';
 import express from 'express';
 import { Gateway } from './gateway/gateway';
 import { SoulStore } from './memory/SoulStore';
-import { ScoringEngine, ActionQueue } from './scheduler/ScoringEngine';
+import { ScoringEngine } from './scheduler/ScoringEngine';
+import { ActionQueue } from './scheduler/ActionQueue';
 import { HEARTBEAT } from './scheduler/HEARTBEAT';
 import { ClassificationEngine } from './nlp/ClassificationEngine';
-
+import { ActionItem } from '../../shared/types';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -27,7 +28,35 @@ const heartbeat = new HEARTBEAT(
   parseInt(process.env.TOP_N || '5'),
   process.env.DRY_RUN === 'true'
 );
+// 🔥 TEST EVENT PIPELINE (simulate incoming event)
 
+(async () => {
+  console.log("[Backend] Running test pipeline...");
+
+  const testEvent = {
+    sender: "recruiter@gmail.com",
+    content: "Please send your resume",
+    timestamp: Date.now() - 5 * 60 * 60 * 1000,
+    type: "unanswered_query",
+  };
+
+  const profile = await soulStore.getProfile(testEvent.sender);
+
+  const score = scoringEngine.score(testEvent as any, profile);
+
+  const action: ActionItem = {
+  id: Date.now().toString(),
+  event: testEvent as any, // REQUIRED (quick fix for now)
+  contact_id: testEvent.sender,
+  action_type: score > 1 ? "DRAFT" : "NUDGE",
+  score,
+  created_at: new Date(),
+};
+
+  actionQueue.insert(action);
+
+  console.log("[Backend] Inserted action:", action);
+})();
 // Middleware
 app.use(express.json());
 

@@ -4,13 +4,13 @@
  */
 
 import cron from 'node-cron';
-import { ActionQueue } from './ScoringEngine';
+import { ActionQueue } from './ActionQueue';
 import { SoulStore } from '../memory/SoulStore';
 import { ActionItem } from '../../../shared/types';
 
 export class HEARTBEAT {
   private task: cron.ScheduledTask | null = null;
-  private lastActionIds: Map<string, string> = new Map();
+  private lastActionMap: Map<string, { id: string; time: number }> = new Map();
 
   constructor(
     private actionQueue: ActionQueue,
@@ -51,10 +51,10 @@ export class HEARTBEAT {
    * Execute a single HEARTBEAT tick
    */
   private async tick(): Promise<void> {
-    console.log('[HEARTBEAT] Tick started');
+    console.log(`[HEARTBEAT] Tick started at ${new Date().toLocaleTimeString()}`);
 
     const topItems = this.actionQueue.peekTop(this.topN);
-    const itemsToProcess = topItems.filter((item) => item.score > this.actionThreshold);
+    const itemsToProcess = topItems.filter((item) => item.score >= this.actionThreshold);
 
     for (const item of itemsToProcess) {
       // Check idempotency: skip if same action fired < 2 hours ago
@@ -64,7 +64,11 @@ export class HEARTBEAT {
       }
 
       await this.dispatchAction(item);
-      this.lastActionIds.set(item.contact_id, item.id);
+      this.lastActionMap.set(item.contact_id, {
+  id: item.id,
+  time: Date.now(),
+});
+this.actionQueue.remove(item.id);
     }
 
     console.log(`[HEARTBEAT] Tick complete (processed ${itemsToProcess.length} actions)`);
@@ -113,17 +117,22 @@ export class HEARTBEAT {
    * Check if action is idempotent (not fired in last 2 hours)
    */
   private isIdempotent(item: ActionItem): boolean {
-    const lastId = this.lastActionIds.get(item.contact_id);
-    if (!lastId) return false;
+  const record = this.lastActionMap.get(item.contact_id);
+  if (!record) return false;
 
-    return lastId === item.id;
-  }
+  const twoHours = 2 * 60 * 60 * 1000;
+
+  return (
+    record.id === item.id &&
+    Date.now() - record.time < twoHours
+  );
+}
 
   /**
    * Convert interval in ms to cron expression
    */
   private getCronExpression(): string {
     // For demo: every 5 minutes; for production: every 30 minutes
-    return '*/5 * * * *'; // Every 5 minutes
+    return '*/5 * * * * *'; // Every 5 minutes
   }
 }
