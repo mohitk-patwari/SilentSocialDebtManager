@@ -38,8 +38,16 @@
   ```
 
 **GET /api/contacts/:id**
-- Get a single contact's full SOUL profile
-- Response: `SOULProfile`
+- Get a single contact's full SOUL profile (same shape as list items)
+- Response:
+  ```json
+  {
+    "success": true,
+    "data": { "SOULProfile": "..." },
+    "timestamp": "2024-01-15T14:30:00Z"
+  }
+  ```
+- Error: `404` with `{ "success": false, "error": "Contact not found", ... }`
 
 ### Actions
 

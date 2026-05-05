@@ -5,8 +5,14 @@
 
 import cron from 'node-cron';
 import { ActionQueue } from './ScoringEngine';
-import { SoulStore } from '../memory/SoulStore';
-import { ActionItem } from '../../../shared/types';
+import { ActionItem, InteractionRecord } from '../../../shared/types';
+
+export interface InteractionWriter {
+  writeInteraction(
+    contactId: string,
+    interaction: InteractionRecord
+  ): Promise<void>;
+}
 
 export class HEARTBEAT {
   private task: cron.ScheduledTask | null = null;
@@ -14,7 +20,7 @@ export class HEARTBEAT {
 
   constructor(
     private actionQueue: ActionQueue,
-    private soulStore: SoulStore,
+    private soulStore: InteractionWriter,
     private interval: number = 1800000, // 30 minutes
     private actionThreshold: number = 0.6,
     private topN: number = 5,
@@ -30,7 +36,7 @@ export class HEARTBEAT {
 
     this.task = cron.schedule(cronExpression, async () => {
       try {
-        await this.tick();
+        await this.executeTick();
       } catch (error) {
         console.error('[HEARTBEAT] Error during tick:', error);
       }
@@ -48,9 +54,16 @@ export class HEARTBEAT {
   }
 
   /**
+   * Run one evaluation pass (used by cron and tests).
+   */
+  async runTickOnce(): Promise<void> {
+    await this.executeTick();
+  }
+
+  /**
    * Execute a single HEARTBEAT tick
    */
-  private async tick(): Promise<void> {
+  private async executeTick(): Promise<void> {
     console.log('[HEARTBEAT] Tick started');
 
     const topItems = this.actionQueue.peekTop(this.topN);
@@ -95,17 +108,32 @@ export class HEARTBEAT {
   }
 
   private async dispatchNudge(item: ActionItem): Promise<void> {
-    // TODO: Send notification to user
+    await this.soulStore.writeInteraction(item.contact_id, {
+      timestamp: new Date(),
+      type: item.event.type,
+      score: item.score,
+      action_taken: 'NUDGE',
+    });
     console.log(`[HEARTBEAT] NUDGE: ${item.contact_id}`);
   }
 
   private async dispatchDraft(item: ActionItem): Promise<void> {
-    // TODO: Generate and queue draft reply
+    await this.soulStore.writeInteraction(item.contact_id, {
+      timestamp: new Date(),
+      type: item.event.type,
+      score: item.score,
+      action_taken: 'DRAFT',
+    });
     console.log(`[HEARTBEAT] DRAFT: ${item.contact_id}`);
   }
 
   private async dispatchSilentLog(item: ActionItem): Promise<void> {
-    // TODO: Update SOUL.md without user notification
+    await this.soulStore.writeInteraction(item.contact_id, {
+      timestamp: new Date(),
+      type: item.event.type,
+      score: item.score,
+      action_taken: 'SILENT_LOG',
+    });
     console.log(`[HEARTBEAT] SILENT_LOG: ${item.contact_id}`);
   }
 

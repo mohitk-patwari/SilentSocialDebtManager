@@ -58,21 +58,26 @@ export class ActionQueue {
     return this.queue.slice(0, n);
   }
 
+  findById(actionId: string): ActionItem | undefined {
+    return this.queue.find((a) => a.id === actionId);
+  }
+
   /**
    * Remove an action
    */
-  remove(actionId: string): void {
+  remove(actionId: string): boolean {
     const index = this.queue.findIndex((a) => a.id === actionId);
-    if (index !== -1) {
-      this.queue.splice(index, 1);
-    }
+    if (index === -1) return false;
+    const [removed] = this.queue.splice(index, 1);
+    this.deduplicationMap.delete(this.getDeduplicationKey(removed));
+    return true;
   }
 
   /**
    * Get queue size
    */
   size(): number {
-    return this.queue.size;
+    return this.queue.length;
   }
 
   private getDeduplicationKey(action: ActionItem): string {
