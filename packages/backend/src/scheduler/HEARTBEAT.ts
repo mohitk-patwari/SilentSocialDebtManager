@@ -10,7 +10,8 @@ import { ActionItem } from '../../../shared/types';
 
 export class HEARTBEAT {
   private task: cron.ScheduledTask | null = null;
-  private lastActionMap: Map<string, { id: string; time: number }> = new Map();
+  private inProgress = false;
+  private stopRequested = false;
 
   constructor(
     private actionQueue: ActionQueue,
@@ -29,10 +30,22 @@ export class HEARTBEAT {
     console.log(`[HEARTBEAT] Starting with interval (cron: ${cronExpression})`);
 
     this.task = cron.schedule(cronExpression, async () => {
+      if (this.inProgress) {
+        console.log('[HEARTBEAT] Previous tick still running, skipping overlap');
+        return;
+      }
+
+      this.inProgress = true;
       try {
         await this.tick();
       } catch (error) {
         console.error('[HEARTBEAT] Error during tick:', error);
+      } finally {
+        this.inProgress = false;
+        if (this.stopRequested) {
+          this.task?.stop();
+          console.log('[HEARTBEAT] Stopped after current tick');
+        }
       }
     });
   }
@@ -42,8 +55,13 @@ export class HEARTBEAT {
    */
   stop(): void {
     if (this.task) {
-      this.task.stop();
-      console.log('[HEARTBEAT] Stopped');
+      if (this.inProgress) {
+        this.stopRequested = true;
+        console.log('[HEARTBEAT] Stop requested; waiting for current tick');
+      } else {
+        this.task.stop();
+        console.log('[HEARTBEAT] Stopped');
+      }
     }
   }
 
@@ -55,37 +73,53 @@ export class HEARTBEAT {
 
     const topItems = this.actionQueue.peekTop(this.topN);
     const itemsToProcess = topItems.filter((item) => item.score >= this.actionThreshold);
-
+    let processed = 0;
     for (const item of itemsToProcess) {
+      const actionType = this.decideActionType(item);
+      const actionKey = this.getActionKey(item, actionType);
+
       // Check idempotency: skip if same action fired < 2 hours ago
-      if (this.isIdempotent(item)) {
+      if (await this.soulStore.isActionIdempotent(item.contact_id, actionKey)) {
         console.log(`[HEARTBEAT] Skipping duplicate action: ${item.id}`);
+        this.actionQueue.remove(item.id);
         continue;
       }
 
-      await this.dispatchAction(item);
-      this.lastActionMap.set(item.contact_id, {
-  id: item.id,
-  time: Date.now(),
-});
-this.actionQueue.remove(item.id);
+      const actionTaken = await this.dispatchAction(item, actionType);
+      await this.soulStore.writeInteraction(item.contact_id, {
+        timestamp: new Date(),
+        type: item.event.type,
+        score: item.score,
+        action_taken: actionTaken,
+      });
+      await this.soulStore.updateHealthScore(item.contact_id, {
+        interactionBoost: true,
+      });
+      if (item.event.tone_profile) {
+        await this.soulStore.updateToneProfile(item.contact_id, item.event.tone_profile);
+      }
+      await this.soulStore.markActionFired(item.contact_id, actionKey);
+      this.actionQueue.remove(item.id);
+      processed++;
     }
-
-    console.log(`[HEARTBEAT] Tick complete (processed ${itemsToProcess.length} actions)`);
+    console.log(`[HEARTBEAT] Tick complete (processed ${processed} actions)`);
   }
 
   /**
    * Dispatch an action (NUDGE, DRAFT, or SILENT_LOG)
    */
-  private async dispatchAction(item: ActionItem): Promise<void> {
-    console.log(`[HEARTBEAT] Dispatching ${item.action_type} for contact ${item.contact_id}`);
+  private async dispatchAction(
+    item: ActionItem,
+    actionType: ActionItem['action_type']
+  ): Promise<ActionItem['action_type']> {
+    console.log(`[HEARTBEAT] Dispatching ${actionType} for contact ${item.contact_id}`);
 
     if (this.dryRun) {
-      console.log(`[HEARTBEAT DRY_RUN] Would dispatch: ${item.action_type}`);
-      return;
+      console.log(`[HEARTBEAT DRY_RUN] Would dispatch: ${actionType}`);
+      return actionType;
     }
 
-    switch (item.action_type) {
+    switch (actionType) {
       case 'NUDGE':
         await this.dispatchNudge(item);
         break;
@@ -96,6 +130,7 @@ this.actionQueue.remove(item.id);
         await this.dispatchSilentLog(item);
         break;
     }
+    return actionType;
   }
 
   private async dispatchNudge(item: ActionItem): Promise<void> {
@@ -104,35 +139,39 @@ this.actionQueue.remove(item.id);
   }
 
   private async dispatchDraft(item: ActionItem): Promise<void> {
-    // TODO: Generate and queue draft reply
-    console.log(`[HEARTBEAT] DRAFT: ${item.contact_id}`);
+    // Placeholder hook for Member 2 provider integration.
+    console.log(
+      `[HEARTBEAT] DRAFT: ${item.contact_id} | placeholder draft generated for event ${item.event.id}`
+    );
   }
 
   private async dispatchSilentLog(item: ActionItem): Promise<void> {
-    // TODO: Update SOUL.md without user notification
-    console.log(`[HEARTBEAT] SILENT_LOG: ${item.contact_id}`);
+    // Silent log intentionally avoids outward notifications.
+    console.log(`[HEARTBEAT] SILENT_LOG (no notification): ${item.contact_id}`);
   }
 
-  /**
-   * Check if action is idempotent (not fired in last 2 hours)
-   */
-  private isIdempotent(item: ActionItem): boolean {
-  const record = this.lastActionMap.get(item.contact_id);
-  if (!record) return false;
+  decideActionType(item: ActionItem): ActionItem['action_type'] {
+    if (item.event.type === 'neutral') return 'SILENT_LOG';
+    if (item.score >= Math.max(this.actionThreshold + 0.6, 1.2)) return 'DRAFT';
+    if (item.score >= this.actionThreshold) return 'NUDGE';
+    return 'SILENT_LOG';
+  }
 
-  const twoHours = 2 * 60 * 60 * 1000;
-
-  return (
-    record.id === item.id &&
-    Date.now() - record.time < twoHours
-  );
-}
+  private getActionKey(item: ActionItem, actionType: ActionItem['action_type']): string {
+    const threadKey = item.event.thread_id || item.event.id;
+    return `${item.contact_id}:${actionType}:${threadKey}`;
+  }
 
   /**
    * Convert interval in ms to cron expression
    */
   private getCronExpression(): string {
-    // For demo: every 5 minutes; for production: every 30 minutes
-    return '*/5 * * * * *'; // Every 5 minutes
+    const intervalMs = this.interval;
+    if (intervalMs <= 60_000) {
+      const seconds = Math.max(1, Math.floor(intervalMs / 1000));
+      return `*/${seconds} * * * * *`;
+    }
+    const minutes = Math.max(1, Math.floor(intervalMs / 60_000));
+    return `*/${minutes} * * * *`;
   }
 }
