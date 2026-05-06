@@ -47,3 +47,4 @@ export class ScoringEngine {
     return (now.getTime() - contactDate.getTime()) / (1000 * 60 * 60);
   }
 }
+

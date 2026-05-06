@@ -2,8 +2,8 @@ import crypto from 'crypto';
 import express from 'express';
 import { Gateway } from './gateway/gateway';
 import { SoulStore } from './memory/SoulStore';
-import { ScoringEngine } from './scheduler/ScoringEngine';
 import { ActionQueue } from './scheduler/ActionQueue';
+import { ScoringEngine } from './scheduler/ScoringEngine';
 import { HEARTBEAT } from './scheduler/HEARTBEAT';
 import { WhatsAppAdapter } from './gateway/adapters/whatsapp/WhatsAppAdapter';
 import { TelegramAdapter } from './gateway/adapters/telegram/TelegramAdapter';
@@ -85,7 +85,7 @@ export function createApp() {
 
   app.get('/auth/gmail/callback', async (req, res) => {
     const code = req.query.code;
-    if (!code || Array.isArray(code)) {
+    if (typeof code !== 'string' || !code) {
       res.status(400).json({ success: false, error: 'Missing Gmail auth code' });
       return;
     }

@@ -6,7 +6,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { google } from 'googleapis';
-import type { OAuth2Client } from 'google-auth-library';
+import type { Credentials, OAuth2Client } from 'google-auth-library';
 import { IChannelAdapter } from '../../gateway';
 import { MessageEvent } from '../../../../../shared/types';
 
@@ -215,16 +215,16 @@ export class GmailAdapter implements IChannelAdapter {
     return this.oauth2Client;
   }
 
-  private async loadToken(): Promise<Record<string, unknown> | null> {
+  private async loadToken(): Promise<Credentials | null> {
     try {
       const data = await fs.readFile(this.tokenPath, 'utf-8');
-      return JSON.parse(data) as Record<string, unknown>;
+      return JSON.parse(data) as Credentials;
     } catch {
       return null;
     }
   }
 
-  private async saveToken(token: Record<string, unknown>): Promise<void> {
+  private async saveToken(token: Credentials): Promise<void> {
     const existing = await this.loadToken();
     const merged = { ...(existing || {}), ...token };
     await fs.writeFile(this.tokenPath, JSON.stringify(merged, null, 2), 'utf-8');
