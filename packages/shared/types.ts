@@ -140,6 +140,40 @@ export interface LLMProvider {
 }
 
 // ============================================================================
+// ✅ ADDED BY MEMBER 2 (NON-BREAKING EXTENSIONS)
+// These are helper types for internal NLP usage (no existing code modified)
+// ============================================================================
+
+/**
+ * Lightweight alias for classification type
+ * Helps improve readability inside NLP modules
+ */
+export type MessageType = ClassificationType;
+
+/**
+ * Optional simplified classified event (for internal processing / testing)
+ * DOES NOT replace main ClassifiedEvent
+ */
+export interface SimpleClassifiedEvent {
+  message: string;
+  type: MessageType;
+  confidence: number;
+  commitments?: Commitment[];
+  tone?: ToneProfile;
+}
+
+/**
+ * Optional lightweight draft structure for early-stage generation/testing
+ * DOES NOT replace main DraftReply
+ */
+export interface SimpleDraft {
+  content: string;
+  tone: ToneProfile;
+  confidence: number;
+  suggested_send_time?: Date;
+}
+
+// ============================================================================
 // API RESPONSE TYPES
 // ============================================================================
 
