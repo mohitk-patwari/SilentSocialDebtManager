@@ -69,6 +69,12 @@ export interface SOULProfile {
   relationship_weight: number; // 0.0–1.0
   last_contact: Date;
   health_score: number; // 0–100
+  drift_detected?: boolean;
+  broken_commitments_count?: number;
+  last_action_meta?: {
+    action_key: string;
+    fired_at: Date;
+  };
   tone_profile_history: ToneProfile[];
   open_commitments: Commitment[];
   interaction_log: InteractionRecord[];

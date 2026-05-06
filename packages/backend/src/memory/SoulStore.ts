@@ -10,12 +10,43 @@ import {
 export class SoulStore {
   constructor(private storePath: string = "./souls") {}
 
+  private readonly twoHoursMs = 2 * 60 * 60 * 1000;
+
   private getFilePath(contactId: string) {
     return path.join(this.storePath, `${contactId}.json`);
   }
 
   private async ensureDir() {
     await fs.mkdir(this.storePath, { recursive: true });
+  }
+
+  private hydrateProfile(parsed: any): SOULProfile {
+    return {
+      ...parsed,
+      last_contact: new Date(parsed.last_contact),
+      interaction_log: (parsed.interaction_log || []).map((i: any) => ({
+        ...i,
+        timestamp: new Date(i.timestamp),
+      })),
+      tone_profile_history: parsed.tone_profile_history || [],
+      open_commitments: parsed.open_commitments || [],
+      broken_commitments_count: parsed.broken_commitments_count ?? 0,
+      drift_detected: parsed.drift_detected ?? false,
+      last_action_meta: parsed.last_action_meta
+        ? {
+            action_key: parsed.last_action_meta.action_key,
+            fired_at: new Date(parsed.last_action_meta.fired_at),
+          }
+        : undefined,
+    };
+  }
+
+  private async writeProfileAtomic(contactId: string, profile: SOULProfile): Promise<void> {
+    await this.ensureDir();
+    const filePath = this.getFilePath(contactId);
+    const tmpFilePath = `${filePath}.tmp`;
+    await fs.writeFile(tmpFilePath, JSON.stringify(profile, null, 2), "utf-8");
+    await fs.rename(tmpFilePath, filePath);
   }
 
   /**
@@ -27,7 +58,7 @@ export class SoulStore {
 
     try {
       const data = await fs.readFile(filePath, "utf-8");
-      return JSON.parse(data);
+      return this.hydrateProfile(JSON.parse(data));
     } catch {
       const defaultProfile: SOULProfile = {
         contact_id: contactId,
@@ -35,12 +66,14 @@ export class SoulStore {
         relationship_weight: 0.5,
         last_contact: new Date(),
         health_score: 100,
+        drift_detected: false,
+        broken_commitments_count: 0,
         tone_profile_history: [],
         open_commitments: [],
         interaction_log: [],
       };
 
-      await fs.writeFile(filePath, JSON.stringify(defaultProfile, null, 2));
+      await this.writeProfileAtomic(contactId, defaultProfile);
       return defaultProfile;
     }
   }
@@ -58,18 +91,7 @@ export class SoulStore {
           path.join(this.storePath, file),
           "utf-8"
         );
-        const parsed = JSON.parse(data);
-
-// 🔥 convert string → Date
-parsed.last_contact = new Date(parsed.last_contact);
-
-// also fix interaction log timestamps (important)
-parsed.interaction_log = parsed.interaction_log.map((i: any) => ({
-  ...i,
-  timestamp: new Date(i.timestamp),
-}));
-
-return parsed;
+        return this.hydrateProfile(JSON.parse(data));
       })
     );
 
@@ -98,10 +120,7 @@ return parsed;
     profile.interaction_log.push(interaction);
     profile.last_contact = new Date();
 
-    await fs.writeFile(
-      this.getFilePath(contactId),
-      JSON.stringify(profile, null, 2)
-    );
+    await this.writeProfileAtomic(contactId, profile);
   }
 
   /**
@@ -122,35 +141,41 @@ return parsed;
       );
     }
 
-    await fs.writeFile(
-      this.getFilePath(contactId),
-      JSON.stringify(profile, null, 2)
-    );
+    await this.writeProfileAtomic(contactId, profile);
   }
 
   /**
    * Update health score
    */
-  async updateHealthScore(contactId: string): Promise<number> {
+  async updateHealthScore(
+    contactId: string,
+    options?: { interactionBoost?: boolean; brokenCommitmentPenalty?: boolean }
+  ): Promise<number> {
     const profile = await this.getProfile(contactId);
 
     const daysSinceContact =
       (new Date().getTime() - profile.last_contact.getTime()) /
       (1000 * 60 * 60 * 24);
 
-    let newScore = profile.health_score;
+    const inactiveWeeks = Math.floor(daysSinceContact / 7);
+    let newScore = 100 - inactiveWeeks * 5;
 
-    if (daysSinceContact > 7) newScore -= 5;
-    if (daysSinceContact > 30) newScore -= 10;
+    if (options?.interactionBoost) {
+      newScore += 10;
+    }
+
+    if (options?.brokenCommitmentPenalty) {
+      profile.broken_commitments_count = (profile.broken_commitments_count || 0) + 1;
+    }
+
+    newScore -= (profile.broken_commitments_count || 0) * 20;
 
     newScore = Math.max(0, Math.min(100, newScore));
 
     profile.health_score = newScore;
+    profile.drift_detected = this.detectRelationshipDrift(profile);
 
-    await fs.writeFile(
-      this.getFilePath(contactId),
-      JSON.stringify(profile, null, 2)
-    );
+    await this.writeProfileAtomic(contactId, profile);
 
     return newScore;
   }
@@ -166,9 +191,31 @@ return parsed;
 
     profile.tone_profile_history.push(tone);
 
-    await fs.writeFile(
-      this.getFilePath(contactId),
-      JSON.stringify(profile, null, 2)
+    await this.writeProfileAtomic(contactId, profile);
+  }
+
+  detectRelationshipDrift(profile: SOULProfile): boolean {
+    const daysSinceContact =
+      (Date.now() - profile.last_contact.getTime()) / (1000 * 60 * 60 * 24);
+    return daysSinceContact > 30 || profile.health_score < 40;
+  }
+
+  async isActionIdempotent(contactId: string, actionKey: string): Promise<boolean> {
+    const profile = await this.getProfile(contactId);
+    if (!profile.last_action_meta) return false;
+    const lastFiredAt = new Date(profile.last_action_meta.fired_at).getTime();
+    return (
+      profile.last_action_meta.action_key === actionKey &&
+      Date.now() - lastFiredAt < this.twoHoursMs
     );
+  }
+
+  async markActionFired(contactId: string, actionKey: string): Promise<void> {
+    const profile = await this.getProfile(contactId);
+    profile.last_action_meta = {
+      action_key: actionKey,
+      fired_at: new Date(),
+    };
+    await this.writeProfileAtomic(contactId, profile);
   }
 }

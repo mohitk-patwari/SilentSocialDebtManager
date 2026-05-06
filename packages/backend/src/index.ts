@@ -11,7 +11,7 @@ import { ScoringEngine } from './scheduler/ScoringEngine';
 import { ActionQueue } from './scheduler/ActionQueue';
 import { HEARTBEAT } from './scheduler/HEARTBEAT';
 import { ClassificationEngine } from './nlp/ClassificationEngine';
-import { ActionItem } from '../../shared/types';
+import { ActionItem, ClassifiedEvent } from '../../shared/types';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -23,7 +23,7 @@ const actionQueue = new ActionQueue();
 const heartbeat = new HEARTBEAT(
   actionQueue,
   soulStore,
-  parseInt(process.env.HEARTBEAT_INTERVAL || '1800000'),
+  parseInt(process.env.HEARTBEAT_INTERVAL || '5000'),
   parseFloat(process.env.ACTION_THRESHOLD || '0.6'),
   parseInt(process.env.TOP_N || '5'),
   process.env.DRY_RUN === 'true'
@@ -33,22 +33,51 @@ const heartbeat = new HEARTBEAT(
 (async () => {
   console.log("[Backend] Running test pipeline...");
 
-  const testEvent = {
-    sender: "recruiter@gmail.com",
-    content: "Please send your resume",
-    timestamp: Date.now() - 5 * 60 * 60 * 1000,
-    type: "unanswered_query",
-  };
-
-  const profile = await soulStore.getProfile(testEvent.sender);
+  const testEvent: ClassifiedEvent = {
+  id: "1",
+  channel: "gmail",
+  sender: {
+    id: "recruiter@gmail.com",
+    name: "Recruiter",
+  },
+  content: "Please send your resume",
+  timestamp: new Date(Date.now() - 5 * 60 * 60 * 1000),
+  type: "unanswered_query",
+  confidence: 0.9,
+  commitments: [],
+  tone_profile: {
+    primary: "professional",
+    formality_score: 0.8,
+    confidence: 0.9,
+  },
+  entities: {},
+};
+// 🔥 Demo: generate new event every 15 sec
+setInterval(async () => {
+  const profile = await soulStore.getProfile("friend@gmail.com");
 
   const score = scoringEngine.score(testEvent as any, profile);
 
   const action: ActionItem = {
   id: Date.now().toString(),
-  event: testEvent as any, // REQUIRED (quick fix for now)
-  contact_id: testEvent.sender,
-  action_type: score > 1 ? "DRAFT" : "NUDGE",
+  event: testEvent,
+  contact_id: "friend@gmail.com",
+  action_type: "NUDGE",
+  score: 1.2,
+  created_at: new Date(),
+};
+
+  actionQueue.insert(action);
+}, 15000);
+  const profile = await soulStore.getProfile(testEvent.sender.id);
+
+  const score = scoringEngine.score(testEvent as any, profile);
+
+  const action: ActionItem = {
+  id: Date.now().toString(),
+  event: testEvent,
+  contact_id: testEvent.sender.id,
+  action_type: "SILENT_LOG",
   score,
   created_at: new Date(),
 };
