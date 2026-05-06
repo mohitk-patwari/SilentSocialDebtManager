@@ -1,13 +1,12 @@
+import { ClassifiedEvent, SOULProfile } from "../../../shared/types";
+
 /**
  * Scoring Engine - Priority Queue Management
  */
-
-import { ClassifiedEvent, SOULProfile, ActionItem } from '../../../shared/types';
-
 export class ScoringEngine {
   /**
-   * Score an event based on urgency, relationship weight, and time decay
-   * Formula: urgency_weight(type) × relationship_weight × log₂(elapsed_hours + 1)
+   * Score an event
+   * Formula: urgency × relationship × log2(hours + 1)
    */
   score(event: ClassifiedEvent, profile: SOULProfile): number {
     const urgencyWeights: Record<string, number> = {
@@ -19,68 +18,32 @@ export class ScoringEngine {
 
     const urgency = urgencyWeights[event.type] || 0.3;
     const relationship = profile.relationship_weight;
+
     const elapsedHours = this.calculateElapsedHours(profile.last_contact);
 
-    return urgency * relationship * Math.log2(elapsedHours + 1);
+    const safeHours = Math.max(1, elapsedHours);
+
+    let score = urgency * relationship * Math.log2(safeHours + 1);
+
+    if (profile.open_commitments.length > 0) {
+      score += 0.3;
+    }
+
+    if (profile.health_score < 40) {
+      score += 0.5;
+    }
+
+    return score;
   }
 
-  private calculateElapsedHours(lastContact: Date): number {
+  private calculateElapsedHours(lastContact: Date | string): number {
     const now = new Date();
-    return (now.getTime() - lastContact.getTime()) / (1000 * 60 * 60);
-  }
-}
 
-export class ActionQueue {
-  private queue: ActionItem[] = [];
-  private deduplicationMap: Map<string, ActionItem> = new Map();
+    const contactDate =
+      typeof lastContact === "string"
+        ? new Date(lastContact)
+        : lastContact;
 
-  /**
-   * Insert an action with deduplication (same contact + same type within 2 hours)
-   */
-  insert(action: ActionItem): void {
-    const key = this.getDeduplicationKey(action);
-    const existing = this.deduplicationMap.get(key);
-
-    if (existing && this.isWithin2Hours(existing.created_at, action.created_at)) {
-      console.log(`[ActionQueue] Duplicate action skipped: ${key}`);
-      return;
-    }
-
-    this.queue.push(action);
-    this.queue.sort((a, b) => b.score - a.score);
-    this.deduplicationMap.set(key, action);
-  }
-
-  /**
-   * Peek at top N actions
-   */
-  peekTop(n: number): ActionItem[] {
-    return this.queue.slice(0, n);
-  }
-
-  /**
-   * Remove an action
-   */
-  remove(actionId: string): void {
-    const index = this.queue.findIndex((a) => a.id === actionId);
-    if (index !== -1) {
-      this.queue.splice(index, 1);
-    }
-  }
-
-  /**
-   * Get queue size
-   */
-  size(): number {
-    return this.queue.length;
-  }
-
-  private getDeduplicationKey(action: ActionItem): string {
-    return `${action.contact_id}_${action.action_type}`;
-  }
-
-  private isWithin2Hours(date1: Date, date2: Date): boolean {
-    const twoHours = 2 * 60 * 60 * 1000;
-    return Math.abs(date1.getTime() - date2.getTime()) < twoHours;
+    return (now.getTime() - contactDate.getTime()) / (1000 * 60 * 60);
   }
 }

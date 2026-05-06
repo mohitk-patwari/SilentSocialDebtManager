@@ -14,14 +14,20 @@ validateConfig(config);
 const PORT = config.port;
 const { app, gateway, heartbeat, actionQueue } = createApp();
 
-const server = app.listen(PORT, async () => {
+const server = app.listen(PORT, () => {
   console.log(`[Backend] Server running on http://localhost:${PORT}`);
   console.log('[Backend] Starting HEARTBEAT daemon...');
   heartbeat.start();
-
-  await gateway.initialize();
-  await gateway.start();
 });
+
+void (async () => {
+  try {
+    await gateway.initialize();
+    await gateway.start();
+  } catch (error) {
+    console.error('[Gateway] Failed to start:', error);
+  }
+})();
 
 const wss = new WebSocketServer({ server, path: '/ws' });
 gateway.onMessage((event) => {
@@ -40,5 +46,5 @@ process.on('SIGINT', () => {
   console.log('[Backend] Shutting down...');
   heartbeat.stop();
   wss.close();
-  process.exit(0);
+  server.close(() => process.exit(0));
 });
