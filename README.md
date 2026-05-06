@@ -68,6 +68,8 @@ SilentSocialDebtManager/
    # Edit packages/backend/.env with your API keys
    ```
 
+   **Note:** WhatsApp, Telegram, and Gmail require external setup (provider apps + OAuth). The backend will start without these, but channel ingestion will be disabled until the credentials are configured.
+
 3. **Build all packages:**
    ```bash
    yarn build

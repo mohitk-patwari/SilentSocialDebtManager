@@ -72,7 +72,7 @@ export class ActionQueue {
    * Get queue size
    */
   size(): number {
-    return this.queue.size;
+    return this.queue.length;
   }
 
   private getDeduplicationKey(action: ActionItem): string {

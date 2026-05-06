@@ -3,6 +3,7 @@
  * Unified entry point for message ingestion from all channels
  */
 
+import { EventEmitter } from 'events';
 import { MessageEvent } from '../../../shared/types';
 
 export interface IChannelAdapter {
@@ -25,14 +26,25 @@ export interface IChannelAdapter {
    * Send a message to a contact
    */
   send(recipient_id: string, message: string): Promise<void>;
+
+  /**
+   * Optional hook for emitting inbound messages to the gateway
+   */
+  setMessageHandler?(handler: (event: MessageEvent) => void): void;
 }
 
 export class Gateway {
   private adapters: Map<string, IChannelAdapter> = new Map();
   private messageQueue: MessageEvent[] = [];
   private deduplicationCache: Set<string> = new Set();
+  private deduplicationOrder: string[] = [];
+  private maxDeduplicationSize: number;
+  private emitter: EventEmitter = new EventEmitter();
+  private lastMessageAt: Date | null = null;
 
-  constructor() {}
+  constructor(maxDeduplicationSize: number = 5000) {
+    this.maxDeduplicationSize = maxDeduplicationSize;
+  }
 
   /**
    * Register a channel adapter
@@ -60,16 +72,28 @@ export class Gateway {
   }
 
   /**
-   * Enqueue a message (with deduplication)
+   * Enqueue a message (with deduplication) and emit to listeners
    */
-  enqueueMessage(event: MessageEvent): void {
+  ingest(event: MessageEvent): void {
     if (this.deduplicationCache.has(event.id)) {
       console.log(`[Gateway] Duplicate message ignored: ${event.id}`);
       return;
     }
 
     this.deduplicationCache.add(event.id);
+    this.deduplicationOrder.push(event.id);
+    this.trimDeduplicationCache();
     this.messageQueue.push(event);
+    this.lastMessageAt = new Date();
+    this.emitter.emit('message', event);
+  }
+
+  /**
+   * Subscribe to inbound messages
+   */
+  onMessage(listener: (event: MessageEvent) => void): () => void {
+    this.emitter.on('message', listener);
+    return () => this.emitter.off('message', listener);
   }
 
   /**
@@ -91,5 +115,34 @@ export class Gateway {
    */
   queueSize(): number {
     return this.messageQueue.length;
+  }
+
+  /**
+   * Gateway stats for debugging
+   */
+  getStats(): { queueSize: number; lastMessageAt: Date | null } {
+    return {
+      queueSize: this.messageQueue.length,
+      lastMessageAt: this.lastMessageAt,
+    };
+  }
+
+  /**
+   * Deduplication cache stats for debugging
+   */
+  getDedupStats(): { cacheSize: number; maxSize: number } {
+    return {
+      cacheSize: this.deduplicationCache.size,
+      maxSize: this.maxDeduplicationSize,
+    };
+  }
+
+  private trimDeduplicationCache(): void {
+    while (this.deduplicationOrder.length > this.maxDeduplicationSize) {
+      const oldest = this.deduplicationOrder.shift();
+      if (oldest) {
+        this.deduplicationCache.delete(oldest);
+      }
+    }
   }
 }
