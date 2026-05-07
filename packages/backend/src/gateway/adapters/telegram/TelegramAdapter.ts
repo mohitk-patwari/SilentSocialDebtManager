@@ -46,11 +46,22 @@ export class TelegramAdapter implements IChannelAdapter {
       this.bot = new TelegramBot(this.botToken, {
         polling: { interval: this.pollingInterval, autoStart: true },
       });
+    } else {
+      try {
+        // If bot was created earlier with polling disabled, start polling now
+        // node-telegram-bot-api exposes startPolling when constructed with polling:false
+        //noinspection JSUnresolvedFunction
+        await (this.bot as any).startPolling?.();
+      } catch (err) {
+        console.warn('[Telegram] startPolling not available or failed:', err);
+      }
     }
 
     this.isPolling = true;
+
     this.bot.on('message', (msg: TelegramBot.Message) => {
       const event = this.toMessageEvent(msg);
+      console.log('[Telegram] Incoming message:', msg.message_id, msg.chat?.id, msg.from?.username || msg.from?.id);
       if (event && this.messageHandler) {
         this.messageHandler(event);
       }
